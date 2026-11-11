@@ -28,6 +28,7 @@ struct PopoverView: View {
             footer
         }
         .frame(width: 340)
+        .focusEffectDisabled()   // 面板一打开，第一个按钮会被套上蓝色焦点框
         .onAppear {
             manager.refresh()
             launchAtLogin = SMAppService.mainApp.status == .enabled
