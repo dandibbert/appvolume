@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.dandibbert.AppVolume</string>
+    <key>CFBundleName</key>
+    <string>AppVolume</string>
+    <key>CFBundleDisplayName</key>
+    <string>AppVolume</string>
+    <key>CFBundleExecutable</key>
+    <string>AppVolume</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.2</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>AppVolume 需要接管各应用的音频输出，才能单独调节它们的音量。不会录制或保存任何声音。</string>
+</dict>
+</plist>

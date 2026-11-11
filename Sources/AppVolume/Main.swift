@@ -1,0 +1,29 @@
+import CoreAudio
+import Foundation
+
+@main
+enum Main {
+    static func main() {
+        if CommandLine.arguments.contains("--self-test") {
+            selfTest()
+            exit(0)
+        }
+        AppVolumeApp.main()
+    }
+
+    /// 不启动界面，只跑一遍设备和进程发现。打包流程用它确认二进制能正常运行。
+    private static func selfTest() {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        print("output device: \(defaultOutputDeviceName() ?? "<none>") [\(defaultOutputDeviceUID() ?? "-")]")
+        print("audio capture permission: \(AudioPermission.status)")
+        let objects = getObjectList(system, kAudioHardwarePropertyProcessObjectList)
+        print("audio processes: \(objects.count)")
+        for obj in objects {
+            let pid = getProperty(obj, kAudioProcessPropertyPID, pid_t(-1)) ?? -1
+            let bundle = getString(obj, kAudioProcessPropertyBundleID) ?? "-"
+            let owner = responsiblePID(for: pid).map(String.init) ?? "-"
+            print("  pid \(pid) owner \(owner) \(bundle)")
+        }
+        print("self-test ok")
+    }
+}
