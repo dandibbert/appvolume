@@ -3,6 +3,7 @@
 #   VERSION, BUILD_NUMBER   written into Info.plist (default 1.0.0 / 1)
 #   SIGN_IDENTITY           codesign identity (default "-", ad-hoc)
 #   SIGN_KEYCHAIN           keychain holding the identity (optional)
+#   PREVIEW_DIR             if set, also renders the popover with sample data to PNGs there
 #   WORK_DIR                intermediates (default ./.build)
 #   DIST_DIR                where the DMG and ZIP go (default ./dist)
 set -euo pipefail
@@ -55,6 +56,14 @@ case "$status" in
   137) echo "warning: self-test did not finish within 30 seconds" >&2 ;;
   *) echo "self-test failed with status $status" >&2; exit 1 ;;
 esac
+
+if [ -n "${PREVIEW_DIR:-}" ]; then
+  mkdir -p "$PREVIEW_DIR"
+  "$app/Contents/MacOS/AppVolume" --render-preview "$PREVIEW_DIR" & pid=$!
+  ( sleep 30; kill -9 "$pid" 2>/dev/null ) & watchdog=$!
+  wait "$pid" || echo "warning: could not render the interface preview" >&2
+  kill "$watchdog" 2>/dev/null || true
+fi
 
 name="AppVolume-$version"
 ditto -c -k --keepParent "$app" "$dist/$name.zip"

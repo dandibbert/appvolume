@@ -46,8 +46,21 @@ final class AudioManager: ObservableObject {
     /// 本次运行中出过声的应用，留在主列表里，免得一暂停就从眼前消失。
     private var seenPlaying = Set<String>()
     private var timer: Timer?
+    private let isPreview: Bool
+
+    /// 只给界面预览用：填入固定数据，不接触 Core Audio。
+    init(previewActive: [AudioApp], others: [AudioApp], settings: [String: AppSetting],
+         permission: AudioPermission.Status, device: String?) {
+        isPreview = true
+        activeApps = previewActive
+        otherApps = others
+        self.settings = settings
+        self.permission = permission
+        outputDeviceName = device
+    }
 
     private init() {
+        isPreview = false
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let saved = try? JSONDecoder().decode([String: AppSetting].self, from: data) {
             settings = saved
@@ -98,6 +111,7 @@ final class AudioManager: ObservableObject {
         guard s != setting(for: id) else { return }
         settings[id] = s.isDefault ? nil : s
         save()
+        if isPreview { return }
         if let engine = engines[id] {
             engine.setGain(s.gain)
         } else if permission == .unknown {
@@ -136,6 +150,7 @@ final class AudioManager: ObservableObject {
     // MARK: - 进程发现
 
     func refresh() {
+        guard !isPreview else { return }
         let status = AudioPermission.status
         if status != permission, !(permission == .authorized && status == .unknown) {
             permission = status
@@ -197,15 +212,28 @@ final class AudioManager: ObservableObject {
     }
 
     private func resolveOwner(pid: pid_t, halBundleID: String?) -> Owner {
-        var app = responsiblePID(for: pid).flatMap { NSRunningApplication(processIdentifier: $0) }
-        if app?.bundleIdentifier == nil {
-            app = NSRunningApplication(processIdentifier: pid)
-        }
-        if let app, let bundleID = app.bundleIdentifier {
+        let path = executablePath(for: pid)
+        if let app = responsiblePID(for: pid).flatMap({ NSRunningApplication(processIdentifier: $0) }),
+           let bundleID = app.bundleIdentifier {
             return Owner(key: bundleID, name: app.localizedName ?? bundleID, icon: app.icon,
                          isRegularApp: app.activationPolicy == .regular)
         }
-        let path = executablePath(for: pid)
+        // 查不到负责进程时，按可执行文件所在的最外层 .app 归属（Foo.app/Contents/.../Helper.app）。
+        if let path, let range = path.range(of: ".app/") {
+            let bundlePath = String(path[..<range.lowerBound]) + ".app"
+            if let bundle = Bundle(path: bundlePath), let bundleID = bundle.bundleIdentifier {
+                let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+                let name = running?.localizedName
+                    ?? FileManager.default.displayName(atPath: bundlePath).replacingOccurrences(of: ".app", with: "")
+                return Owner(key: bundleID, name: name,
+                             icon: NSWorkspace.shared.icon(forFile: bundlePath),
+                             isRegularApp: running.map { $0.activationPolicy == .regular } ?? true)
+            }
+        }
+        if let app = NSRunningApplication(processIdentifier: pid), let bundleID = app.bundleIdentifier {
+            return Owner(key: bundleID, name: app.localizedName ?? bundleID, icon: app.icon,
+                         isRegularApp: app.activationPolicy == .regular)
+        }
         let name = path.map { ($0 as NSString).lastPathComponent } ?? "pid \(pid)"
         let key = (halBundleID?.isEmpty == false) ? halBundleID! : name
         return Owner(key: key, name: name,

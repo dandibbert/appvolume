@@ -8,6 +8,10 @@ enum Main {
             selfTest()
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-preview"),
+           i + 1 < CommandLine.arguments.count {
+            exit(Preview.render(to: CommandLine.arguments[i + 1]) ? 0 : 1)
+        }
         AppVolumeApp.main()
     }
 
