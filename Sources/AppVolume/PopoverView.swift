@@ -24,6 +24,8 @@ struct PopoverView: View {
                     .padding(.bottom, 8)
             }
             content
+                .disabled(!manager.isEnabled)
+                .opacity(manager.isEnabled ? 1 : 0.4)
             Divider()
             footer
         }
@@ -50,6 +52,13 @@ struct PopoverView: View {
                     .lineLimit(1)
                     .help("当前输出设备")
             }
+            Toggle("启用", isOn: Binding(
+                get: { manager.isEnabled },
+                set: { manager.setEnabled($0) }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .help(manager.isEnabled ? "关闭后所有应用恢复原始音量，设置会保留" : "打开后恢复各应用的音量设置")
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -137,7 +146,7 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack {
-            Text("拖动调节，最高 200%")
+            Text(manager.isEnabled ? "拖动调节，最高 200%" : "已关闭，所有应用按原始音量播放")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
             Spacer()

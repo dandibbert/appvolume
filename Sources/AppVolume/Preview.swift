@@ -29,6 +29,9 @@ enum Preview {
             ("denied", AudioManager(previewActive: [music], others: [],
                                     settings: ["music": AppSetting(volume: 0.45)],
                                     permission: .denied, device: "AirPods Pro")),
+            ("disabled", AudioManager(previewActive: [facetime, safari, music], others: [podcasts, tv],
+                                      settings: settings, permission: .authorized,
+                                      device: "MacBook Pro扬声器", enabled: false)),
             ("empty", AudioManager(previewActive: [], others: [], settings: [:],
                                    permission: .authorized, device: "MacBook Pro扬声器")),
         ]

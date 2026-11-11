@@ -23,12 +23,15 @@ final class AudioManager: ObservableObject {
     static let shared = AudioManager()
     static let maxVolume: Float = 2.0
     private static let defaultsKey = "appSettings"
+    private static let enabledKey = "enabled"
 
     /// 正在播放、播放过、或者有自定义音量的应用。
     @Published private(set) var activeApps: [AudioApp] = []
     /// 打开了音频设备但还没出过声的其他应用。
     @Published private(set) var otherApps: [AudioApp] = []
     @Published private(set) var settings: [String: AppSetting] = [:]
+    /// 总开关。关掉后撤掉所有 tap，应用按原始音量播放，各自的设置保留。
+    @Published private(set) var isEnabled = true
     @Published private(set) var permission: AudioPermission.Status = .unknown
     @Published private(set) var outputDeviceName: String?
     @Published private(set) var lastError: String?
@@ -50,8 +53,9 @@ final class AudioManager: ObservableObject {
 
     /// 只给界面预览用：填入固定数据，不接触 Core Audio。
     init(previewActive: [AudioApp], others: [AudioApp], settings: [String: AppSetting],
-         permission: AudioPermission.Status, device: String?) {
+         permission: AudioPermission.Status, device: String?, enabled: Bool = true) {
         isPreview = true
+        isEnabled = enabled
         activeApps = previewActive
         otherApps = others
         self.settings = settings
@@ -61,6 +65,9 @@ final class AudioManager: ObservableObject {
 
     private init() {
         isPreview = false
+        if UserDefaults.standard.object(forKey: Self.enabledKey) != nil {
+            isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        }
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let saved = try? JSONDecoder().decode([String: AppSetting].self, from: data) {
             settings = saved
@@ -99,6 +106,14 @@ final class AudioManager: ObservableObject {
         update(s, for: id)
     }
 
+    func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
+        if isPreview { return }
+        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+        refresh()
+    }
+
     func resetAll() {
         settings.removeAll()
         save()
@@ -111,7 +126,7 @@ final class AudioManager: ObservableObject {
         guard s != setting(for: id) else { return }
         settings[id] = s.isDefault ? nil : s
         save()
-        if isPreview { return }
+        if isPreview || !isEnabled { return }
         if let engine = engines[id] {
             engine.setGain(s.gain)
         } else if permission == .unknown {
@@ -247,7 +262,7 @@ final class AudioManager: ObservableObject {
     /// 这样滑块经过 100% 时不会反复重建造成卡顿。
     /// 没拿到权限时不建 tap：那样只会把应用静音却放不出声音。
     private func syncEngines() {
-        guard permission == .authorized, let outputUID = defaultOutputDeviceUID() else {
+        guard isEnabled, permission == .authorized, let outputUID = defaultOutputDeviceUID() else {
             engines.removeAll()
             return
         }

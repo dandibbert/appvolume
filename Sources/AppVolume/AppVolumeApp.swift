@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// 菜单栏图标和弹出面板。用 NSStatusItem + NSPopover，面板的圆角、材质和箭头都交给系统绘制。
@@ -6,6 +7,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private var enabledObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let manager = AudioManager.shared   // 启动即应用已保存的音量，不等菜单被点开
@@ -20,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(togglePopover(_:))
         }
         statusItem = item
+        // 总开关关掉时，菜单栏图标变淡。
+        enabledObserver = manager.$isEnabled.sink { [weak item] enabled in
+            item?.button?.appearsDisabled = !enabled
+        }
 
         let host = NSHostingController(rootView: PopoverView().environmentObject(manager))
         host.sizingOptions = [.preferredContentSize]   // 列表展开、收起时面板跟着变高
