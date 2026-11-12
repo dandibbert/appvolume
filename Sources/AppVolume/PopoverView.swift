@@ -10,6 +10,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            masterRow
+            Divider()
+                .padding(.bottom, 6)
             if manager.permission != .authorized {
                 PermissionBanner()
                     .padding(.horizontal, 10)
@@ -63,6 +66,45 @@ struct PopoverView: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 8)
+    }
+
+    // MARK: - 总音量
+
+    private var masterRow: some View {
+        let volume = Binding<Double>(
+            get: { Double(manager.masterVolume) },
+            set: { manager.setMasterVolume(Float($0)) })
+        let percent = Int((manager.masterVolume * 100).rounded())
+        let muted = manager.masterMuted
+
+        return HStack(spacing: 8) {
+            Button {
+                manager.setMasterMuted(!muted)
+            } label: {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(muted ? Color.red : Color.secondary)
+                    .frame(width: 22, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(muted ? "取消全部静音" : "全部静音")
+
+            Text("总音量")
+                .font(.system(size: 12, weight: .medium))
+
+            VolumeSlider(value: volume, dimmed: muted)
+                .help("拖动会覆盖下面每个应用的音量")
+
+            Text(muted ? "静音" : "\(percent)%")
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(muted ? Color.red : (manager.masterVolume > 1 ? Color.orange : Color.secondary))
+                .frame(width: 38, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .disabled(!manager.isEnabled)
+        .opacity(manager.isEnabled ? 1 : 0.4)
     }
 
     // MARK: - 列表
