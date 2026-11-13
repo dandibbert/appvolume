@@ -6,7 +6,6 @@ struct AppSetting: Codable, Equatable {
     var volume: Float = 1.0   // 0.0 ... 2.0
     var muted: Bool = false
 
-    var isDefault: Bool { volume == 1.0 && !muted }
     var gain: Float { muted ? 0 : volume }
 }
 
@@ -23,12 +22,21 @@ final class AudioManager: ObservableObject {
     static let shared = AudioManager()
     static let maxVolume: Float = 2.0
     private static let defaultsKey = "appSettings"
+    private static let enabledKey = "enabled"
+    private static let masterVolumeKey = "masterVolume"
+    private static let masterMutedKey = "masterMuted"
 
     /// 正在播放、播放过、或者有自定义音量的应用。
     @Published private(set) var activeApps: [AudioApp] = []
     /// 打开了音频设备但还没出过声的其他应用。
     @Published private(set) var otherApps: [AudioApp] = []
     @Published private(set) var settings: [String: AppSetting] = [:]
+    /// 总开关。关掉后撤掉所有 tap，应用按原始音量播放，各自的设置保留。
+    @Published private(set) var isEnabled = true
+    /// 总音量：没有单独调过的应用都按它播放。拖动它会覆盖所有应用各自的音量。
+    @Published private(set) var masterVolume: Float = 1.0
+    /// 总静音：所有应用都不出声，各自的设置不动。
+    @Published private(set) var masterMuted = false
     @Published private(set) var permission: AudioPermission.Status = .unknown
     @Published private(set) var outputDeviceName: String?
     @Published private(set) var lastError: String?
@@ -50,8 +58,9 @@ final class AudioManager: ObservableObject {
 
     /// 只给界面预览用：填入固定数据，不接触 Core Audio。
     init(previewActive: [AudioApp], others: [AudioApp], settings: [String: AppSetting],
-         permission: AudioPermission.Status, device: String?) {
+         permission: AudioPermission.Status, device: String?, enabled: Bool = true) {
         isPreview = true
+        isEnabled = enabled
         activeApps = previewActive
         otherApps = others
         self.settings = settings
@@ -61,6 +70,13 @@ final class AudioManager: ObservableObject {
 
     private init() {
         isPreview = false
+        if UserDefaults.standard.object(forKey: Self.enabledKey) != nil {
+            isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        }
+        if UserDefaults.standard.object(forKey: Self.masterVolumeKey) != nil {
+            masterVolume = max(0, min(Self.maxVolume, UserDefaults.standard.float(forKey: Self.masterVolumeKey)))
+        }
+        masterMuted = UserDefaults.standard.bool(forKey: Self.masterMutedKey)
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let saved = try? JSONDecoder().decode([String: AppSetting].self, from: data) {
             settings = saved
@@ -85,7 +101,42 @@ final class AudioManager: ObservableObject {
 
     // MARK: - 设置
 
-    func setting(for id: String) -> AppSetting { settings[id] ?? AppSetting() }
+    func setting(for id: String) -> AppSetting { settings[id] ?? AppSetting(volume: masterVolume) }
+
+    /// 实际加到应用上的增益。
+    private func gain(for id: String) -> Float { masterMuted ? 0 : setting(for: id).gain }
+
+    /// 设置总音量，并覆盖每个应用各自的音量（各自的静音保留）。
+    func setMasterVolume(_ volume: Float) {
+        let v = max(0, min(Self.maxVolume, volume))
+        let overridden = settings.contains { $0.value.volume != v }
+        guard v != masterVolume || overridden else { return }
+        masterVolume = v
+        settings = settings.compactMapValues { $0.muted ? AppSetting(volume: v, muted: true) : nil }
+        save()
+        if isPreview { return }
+        UserDefaults.standard.set(v, forKey: Self.masterVolumeKey)
+        applyGains()
+    }
+
+    func setMasterMuted(_ muted: Bool) {
+        guard muted != masterMuted else { return }
+        masterMuted = muted
+        if isPreview { return }
+        UserDefaults.standard.set(muted, forKey: Self.masterMutedKey)
+        applyGains()
+    }
+
+    /// 总音量或总静音变了：更新已有的 tap，并给还没有 tap 的应用补上。
+    private func applyGains() {
+        guard isEnabled else { return }
+        for (id, engine) in engines { engine.setGain(gain(for: id)) }
+        if permission == .unknown {
+            if masterMuted || masterVolume != 1.0 { requestPermission() }
+        } else {
+            syncEngines()
+        }
+    }
 
     func setVolume(_ volume: Float, for id: String) {
         var s = setting(for: id)
@@ -99,21 +150,34 @@ final class AudioManager: ObservableObject {
         update(s, for: id)
     }
 
+    func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
+        if isPreview { return }
+        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+        refresh()
+    }
+
     func resetAll() {
         settings.removeAll()
         save()
+        masterVolume = 1.0
+        masterMuted = false
+        if isPreview { return }
+        UserDefaults.standard.removeObject(forKey: Self.masterVolumeKey)
+        UserDefaults.standard.removeObject(forKey: Self.masterMutedKey)
         for engine in engines.values { engine.setGain(1.0) }
     }
 
-    var hasCustomSettings: Bool { !settings.isEmpty }
+    var hasCustomSettings: Bool { !settings.isEmpty || masterVolume != 1.0 || masterMuted }
 
     private func update(_ s: AppSetting, for id: String) {
         guard s != setting(for: id) else { return }
-        settings[id] = s.isDefault ? nil : s
+        settings[id] = (s.volume == masterVolume && !s.muted) ? nil : s
         save()
-        if isPreview { return }
+        if isPreview || !isEnabled { return }
         if let engine = engines[id] {
-            engine.setGain(s.gain)
+            engine.setGain(gain(for: id))
         } else if permission == .unknown {
             requestPermission()
         } else {
@@ -243,11 +307,11 @@ final class AudioManager: ObservableObject {
 
     // MARK: - Tap 管理
 
-    /// 只给音量不是 100% 的应用建 tap；已建的 tap 保留到进程退出，
+    /// 只给实际增益不是 100% 的应用建 tap；已建的 tap 保留到进程退出，
     /// 这样滑块经过 100% 时不会反复重建造成卡顿。
     /// 没拿到权限时不建 tap：那样只会把应用静音却放不出声音。
     private func syncEngines() {
-        guard permission == .authorized, let outputUID = defaultOutputDeviceUID() else {
+        guard isEnabled, permission == .authorized, let outputUID = defaultOutputDeviceUID() else {
             engines.removeAll()
             return
         }
@@ -257,9 +321,9 @@ final class AudioManager: ObservableObject {
         }
 
         for (id, app) in allApps {
-            let s = setting(for: id)
+            let appGain = gain(for: id)
             let existing = engines[id]
-            guard existing != nil || !s.isDefault else { continue }
+            guard existing != nil || appGain != 1.0 else { continue }
             if let existing, existing.processObjects == app.processObjects,
                existing.outputUID == outputUID {
                 continue
@@ -267,7 +331,7 @@ final class AudioManager: ObservableObject {
             engines[id] = nil   // 先销毁旧的，再建新的
             do {
                 engines[id] = try TapEngine(processObjects: app.processObjects,
-                                            outputUID: outputUID, gain: s.gain)
+                                            outputUID: outputUID, gain: appGain)
                 if lastError != nil { lastError = nil }
             } catch {
                 let message = "无法接管“\(app.name)”的音频（\(error)）"

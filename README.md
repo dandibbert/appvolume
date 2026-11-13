@@ -2,7 +2,8 @@
 
 macOS 菜单栏应用：分应用调节音量（0–200%）、静音，并按应用记住设置。需要 macOS 14.2 或更高版本。
 
-- M1 构建在 [`dandibbert/mac-build-hub`](https://github.com/dandibbert/mac-build-hub) 的 `AppVolume macOS build` 工作流里手动触发，填本仓库的完整 commit SHA。用个人证书签名，产物是 DMG 和 ZIP。
+- M1 构建在 [`dandibbert/mac-build-hub`](https://github.com/dandibbert/mac-build-hub) 的 `AppVolume macOS build` 工作流里手动触发，填本仓库的完整 commit SHA。用个人证书签名，DMG 和 ZIP 发到本仓库的 [Releases](https://github.com/dandibbert/appvolume/releases)。
+- 推送到 `main` 或 `claude/**` 分支时，本仓库的 `Build` 工作流会自动构建一份临时签名的包，供检查用。
 - 本地打包：`bash scripts/package.sh`（默认临时签名，产物在 `dist/`）。
 - 图标由 `Resources/AppIcon.svg` 渲染成 `Resources/AppIcon.png`，打包时再生成 `.icns`。
 

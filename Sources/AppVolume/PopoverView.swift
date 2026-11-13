@@ -10,6 +10,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            masterRow
+            Divider()
+                .padding(.bottom, 6)
             if manager.permission != .authorized {
                 PermissionBanner()
                     .padding(.horizontal, 10)
@@ -24,10 +27,13 @@ struct PopoverView: View {
                     .padding(.bottom, 8)
             }
             content
+                .disabled(!manager.isEnabled)
+                .opacity(manager.isEnabled ? 1 : 0.4)
             Divider()
             footer
         }
         .frame(width: 340)
+        .focusEffectDisabled()   // 面板一打开，第一个按钮会被套上蓝色焦点框
         .onAppear {
             manager.refresh()
             launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -49,10 +55,56 @@ struct PopoverView: View {
                     .lineLimit(1)
                     .help("当前输出设备")
             }
+            Toggle("启用", isOn: Binding(
+                get: { manager.isEnabled },
+                set: { manager.setEnabled($0) }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .help(manager.isEnabled ? "关闭后所有应用恢复原始音量，设置会保留" : "打开后恢复各应用的音量设置")
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 8)
+    }
+
+    // MARK: - 总音量
+
+    private var masterRow: some View {
+        let volume = Binding<Double>(
+            get: { Double(manager.masterVolume) },
+            set: { manager.setMasterVolume(Float($0)) })
+        let percent = Int((manager.masterVolume * 100).rounded())
+        let muted = manager.masterMuted
+
+        return HStack(spacing: 8) {
+            Button {
+                manager.setMasterMuted(!muted)
+            } label: {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(muted ? Color.red : Color.secondary)
+                    .frame(width: 22, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(muted ? "取消全部静音" : "全部静音")
+
+            Text("总音量")
+                .font(.system(size: 12, weight: .medium))
+
+            VolumeSlider(value: volume, dimmed: muted)
+                .help("拖动会覆盖下面每个应用的音量")
+
+            Text(muted ? "静音" : "\(percent)%")
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(muted ? Color.red : (manager.masterVolume > 1 ? Color.orange : Color.secondary))
+                .frame(width: 38, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .disabled(!manager.isEnabled)
+        .opacity(manager.isEnabled ? 1 : 0.4)
     }
 
     // MARK: - 列表
@@ -136,7 +188,7 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack {
-            Text("拖动调节，最高 200%")
+            Text(manager.isEnabled ? "拖动调节，最高 200%" : "已关闭，所有应用按原始音量播放")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
             Spacer()

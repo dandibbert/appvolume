@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version written into Info.plist
+        default: 1.0.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15   # Apple silicon
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Build and package
+        env:
+          VERSION: ${{ inputs.version || '1.0.0' }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          PREVIEW_DIR: ${{ github.workspace }}/preview
+        run: bash scripts/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppVolume-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-${{ github.sha }}
+          path: preview/
+          if-no-files-found: warn
