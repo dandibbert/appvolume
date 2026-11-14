@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let manager = AudioManager.shared   // 启动即应用已保存的音量，不等菜单被点开
+        HotKeys.shared.setEnabled(UserDefaults.standard.bool(forKey: HotKeys.defaultsKey))
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
