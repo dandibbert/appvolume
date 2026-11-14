@@ -5,7 +5,8 @@ import SwiftUI
 struct PopoverView: View {
     @EnvironmentObject var manager: AudioManager
     @AppStorage("showOtherApps") private var showOthers = false
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage(HotKeys.defaultsKey) private var hotKeysEnabled = false
+    @State private var loginStatus = SMAppService.mainApp.status
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,13 +19,15 @@ struct PopoverView: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
             }
-            if let error = manager.lastError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+            let hiddenErrors = backgroundErrors
+            if !hiddenErrors.isEmpty {
+                Label("有 \(hiddenErrors.count) 个后台进程的音频无法接管", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 8)
+                    .help(hiddenErrors.joined(separator: "\n"))
             }
             content
                 .disabled(!manager.isEnabled)
@@ -36,8 +39,14 @@ struct PopoverView: View {
         .focusEffectDisabled()   // 面板一打开，第一个按钮会被套上蓝色焦点框
         .onAppear {
             manager.refresh()
-            launchAtLogin = SMAppService.mainApp.status == .enabled
+            loginStatus = SMAppService.mainApp.status
         }
+    }
+
+    /// 列表里看不到的进程（后台进程）的接管错误。列表里的应用在各自那一行显示。
+    private var backgroundErrors: [String] {
+        let visible = Set((manager.activeApps + manager.otherApps).map(\.id))
+        return manager.errors.filter { !visible.contains($0.key) }.map(\.value).sorted()
     }
 
     // MARK: - 头部
@@ -94,7 +103,7 @@ struct PopoverView: View {
                 .font(.system(size: 12, weight: .medium))
 
             VolumeSlider(value: volume, dimmed: muted)
-                .help("拖动会覆盖下面每个应用的音量")
+                .help("按比例作用在所有应用上，各应用自己的音量保留")
 
             Text(muted ? "静音" : "\(percent)%")
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
@@ -188,15 +197,27 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack {
-            Text(manager.isEnabled ? "拖动调节，最高 200%" : "已关闭，所有应用按原始音量播放")
+            Text(manager.isEnabled ? "应用音量相对于总音量，最高 200%" : "已关闭，所有应用按原始音量播放")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
             Spacer()
             Menu {
                 Toggle("登录时启动", isOn: Binding(
-                    get: { launchAtLogin },
+                    get: { loginStatus == .enabled },
                     set: { setLaunchAtLogin($0) }))
-                Button("全部还原为 100%") { manager.resetAll() }
+                if loginStatus == .requiresApproval {
+                    Button("登录时启动需要在系统设置中批准…") {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                }
+                Toggle("全局快捷键（\(HotKeys.summary)）", isOn: Binding(
+                    get: { hotKeysEnabled },
+                    set: {
+                        hotKeysEnabled = $0
+                        HotKeys.shared.setEnabled($0)
+                    }))
+                Divider()
+                Button("全部还原为默认") { manager.resetAll() }
                     .disabled(!manager.hasCustomSettings)
                 Divider()
                 Button("关于 AppVolume") {
@@ -226,7 +247,7 @@ struct PopoverView: View {
         } catch {
             NSLog("AppVolume: launch at login failed: %@", String(describing: error))
         }
-        launchAtLogin = SMAppService.mainApp.status == .enabled
+        loginStatus = SMAppService.mainApp.status
     }
 }
 

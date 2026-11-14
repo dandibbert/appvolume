@@ -58,6 +58,32 @@ func defaultOutputDeviceName() -> String? {
     return getString(dev, kAudioObjectPropertyName)
 }
 
+struct OutputDevice: Identifiable, Equatable {
+    let uid: String
+    let name: String
+    var id: String { uid }
+}
+
+/// 所有能输出声音的设备，不含 AppVolume 自己建的聚合设备。
+func listOutputDevices() -> [OutputDevice] {
+    getObjectList(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices).compactMap { dev in
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreams,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(dev, &addr, 0, nil, &size) == noErr, size > 0 else { return nil }
+        if (getProperty(dev, kAudioDevicePropertyIsHidden, UInt32(0)) ?? 0) != 0 { return nil }
+        guard let uid = getString(dev, kAudioDevicePropertyDeviceUID),
+              let name = getString(dev, kAudioObjectPropertyName) else { return nil }
+        if name == TapEngine.deviceName,
+           getProperty(dev, kAudioDevicePropertyTransportType, UInt32(0)) == kAudioDeviceTransportTypeAggregate {
+            return nil
+        }
+        return OutputDevice(uid: uid, name: name)
+    }
+}
+
 /// 找出"对该进程负责"的 pid（例如 Chrome Helper -> Chrome，WebKit GPU 进程 -> Safari）。
 /// 这是私有符号，所以用 dlsym 在运行时查找，找不到就返回 nil。
 func responsiblePID(for pid: pid_t) -> pid_t? {
