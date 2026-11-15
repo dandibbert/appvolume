@@ -15,15 +15,22 @@ enum Preview {
         let facetime = app("facetime", "FaceTime通话", "/System/Applications/FaceTime.app", playing: false)
         let podcasts = app("podcasts", "播客", "/System/Applications/Podcasts.app", playing: false)
         let tv = app("tv", "视频", "/System/Applications/TV.app", playing: false)
+        let devices = [OutputDevice(uid: "builtin", name: "MacBook Pro扬声器"),
+                       OutputDevice(uid: "airpods", name: "AirPods Pro")]
         let settings: [String: AppSetting] = [
             "safari": AppSetting(volume: 1.6, muted: false),
-            "music": AppSetting(volume: 0.45, muted: false),
-            "facetime": AppSetting(volume: 0.8, muted: true),
+            "music": AppSetting(volume: 0.45, muted: false, outputUID: "airpods", outputName: "AirPods Pro"),
+            "facetime": AppSetting(volume: 0.8, muted: true, mutedUntil: Date().addingTimeInterval(900)),
         ]
 
         let scenarios: [(String, AudioManager)] = [
             ("apps", AudioManager(previewActive: [facetime, safari, music], others: [podcasts, tv],
-                                  settings: settings, permission: .authorized, device: "MacBook Pro扬声器")),
+                                  settings: settings, permission: .authorized, device: "MacBook Pro扬声器",
+                                  devices: devices, masterVolume: 0.7,
+                                  errors: ["safari": "无法接管“Safari浏览器”的音频（CreateProcessTap failed: -1）"])),
+            ("master-muted", AudioManager(previewActive: [facetime, safari, music], others: [],
+                                          settings: settings, permission: .authorized,
+                                          device: "MacBook Pro扬声器", devices: devices, masterMuted: true)),
             ("first-run", AudioManager(previewActive: [music], others: [podcasts],
                                        settings: [:], permission: .unknown, device: "MacBook Pro扬声器")),
             ("denied", AudioManager(previewActive: [music], others: [],
